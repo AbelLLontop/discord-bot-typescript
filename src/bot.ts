@@ -10,12 +10,29 @@ import fs from "fs";
 import { SlashCommandInterface } from "./interfaces/SlashCommand.interface";
 import { CommandInterface } from "./interfaces/command.interface";
 import path from "path";
-const TOKEN =process.env.TOKEN_BOT; //token del bot
-const guildID = process.env.GUILD_ID; //id del servidor
-const ClientID = process.env.CLIENT_ID; //id de la aplicacion
-if(!TOKEN || !guildID || !ClientID){
-  throw new Error("Falta una variable de entorno")
-}
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import tokens from "./config/tokens";
+
+//IA
+const genAI = new GoogleGenerativeAI(tokens.TOKEN_GEMINI);
+const model = genAI.getGenerativeModel({ model: tokens.MODEL_IA });
+let chat = model.startChat({
+  history: [
+    {
+      role: "user",
+      parts: [{ text: "Hola" }],
+    },
+    {
+      role: "model",
+      parts: [{ text: "Hola, mi nombre es gemini, en que puedo ayudarte?" }],
+    },
+  ],
+  generationConfig: {
+    maxOutputTokens: 100,
+  },
+});
+
+
 //Cliente
 const client = new Client({
   intents: 3276799,
@@ -37,7 +54,7 @@ const promises = filesCommandNames.map(async (file) => {
 });
 
 //Registrar Comandos
-const REST = new DiscordRest({ version: "10" }).setToken(TOKEN);
+const REST = new DiscordRest({ version: "10" }).setToken(tokens.TOKEN_BOT);
 
 (async () => {
   try {
@@ -45,9 +62,12 @@ const REST = new DiscordRest({ version: "10" }).setToken(TOKEN);
     console.log(
       "Comenzo la actualizacion de los comandos de la aplicacion (/)"
     );
-    await REST.put(Routes.applicationGuildCommands(ClientID, guildID), {
-      body: commands,
-    });
+    await REST.put(
+      Routes.applicationGuildCommands(tokens.CLIENT_ID, tokens.GUILD_ID),
+      {
+        body: commands,
+      }
+    );
     console.log(
       "Los comandos de la aplicacion (/) se han actualizado correctamente"
     );
@@ -63,12 +83,17 @@ client.on(Events.ClientReady, async () => {
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
-  if (!message.content.startsWith("!")) return;
+  if (!message.content.startsWith("!!g")) return;
   try {
-    const args = message.content.toLowerCase().slice(1).split(" ")[0];
+    //Comandos
+    const args = message.content.toLowerCase().slice(2).split(" ")[0];
+
     const command: CommandInterface = (await import(`./commands/${args}`))
       .default;
-    command.run(message);
+    command.run(message, {
+      modelAI: model,
+      // chatAI: chat,
+    });
   } catch (e) {
     console.log(`${message.content} no es un comando valido.`);
   }
@@ -87,4 +112,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-client.login(TOKEN);
+client.login(tokens.TOKEN_BOT);
